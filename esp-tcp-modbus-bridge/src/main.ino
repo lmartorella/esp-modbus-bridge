@@ -15,7 +15,11 @@
 static ModbusRTU rtu;
 static ModbusTCP tcp;
 static TelnetStreamClass& _log = TelnetStream; // TX only
+#if defined(ESP8266)
+static HardwareSerial& _rtuSerial = Serial;
+#else
 static HardwareSerial _rtuSerial(1);
+#endif
 
 static WiFiUDP udp;
 static MDNS mdns(udp);
@@ -106,8 +110,12 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
 }
 
 void setup() {
+#if defined(ESP8266)
+  _rtuSerial.begin(9600, SERIAL_8N1);
+#else
   _rtuSerial.begin(9600, SERIAL_8N1, 35, 33); // 35 is input only
-  
+#endif
+
   WiFi.setHostname(WIFI_HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASSPHRASE);
   
