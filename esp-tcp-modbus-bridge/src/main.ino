@@ -83,6 +83,12 @@ static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t le
     // Fix Sofar error
     data[0] = 0x83;
     frameArg->validFrame = true;
+  } else {
+      _log.printf("RTU: Invalid frame: ");
+      for (uint8_t i = 0; i < len; i++) {
+        _log.printf("<%02x>", data[i]);
+      }
+      _log.printf("\n");
   }
 }
 
@@ -104,8 +110,6 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
       if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len)) {
         _log.printf("TCP rawResponse failed\n");
       }
-    } else {
-      _log.printf("RTU: Invalid frame, no response\n");
     }
     rtuNodeId = 0;
     tcpTransId = 0;
