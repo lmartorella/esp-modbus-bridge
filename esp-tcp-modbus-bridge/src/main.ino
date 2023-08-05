@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #endif
 
+#include <WiFiUdp.h>
+#include <ArduinoMDNS.h>
 #include <ModbusRTU.h>
 #include <ModbusTCP.h>
 #include <TelnetStream.h>
@@ -14,6 +16,9 @@ static ModbusRTU rtu;
 static ModbusTCP tcp;
 static TelnetStreamClass& _log = TelnetStream; // TX only
 static HardwareSerial _rtuSerial(1);
+
+static WiFiUDP udp;
+static MDNS mdns(udp);
 
 static const int MODBUS_TCP_PORT = 502;
 static uint16_t rtuNodeId = 0;
@@ -86,7 +91,7 @@ void setup() {
   
   WiFi.setHostname(WIFI_HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASSPHRASE);
-
+  
   tcp.server(MODBUS_TCP_PORT);
   tcp.onRaw(cbTcpRaw);
   tcp.onConnect(onTcpConnected);
@@ -97,9 +102,19 @@ void setup() {
   rtu.onRaw(cbRtuRaw); 
 
   TelnetStream.begin();
+
+  // Initialize the mDNS library. You can now reach or ping this
+  // Arduino via the host name "arduino.local", provided that your operating
+  // system is mDNS/Bonjour-enabled (such as MacOS X).
+  // Always call this before any other method!
+  mdns.begin(WiFi.localIP(), "esp32");
 }
 
 void loop() {
+  // This actually runs the mDNS module. YOU HAVE TO CALL THIS PERIODICALLY,
+  // OR NOTHING WILL WORK! Preferably, call it once per loop().
+  mdns.run();
+
   // Clear RX buffer
   while (_log.available() > 0) {
     _log.read();
