@@ -4,8 +4,12 @@
 #include <WiFi.h>
 #endif
 
+#if defined(ESP32)
+// Not compatible with Arduino UDP of esp8266 core yet
 #include <WiFiUdp.h>
 #include <ArduinoMDNS.h>
+#endif
+
 #include <ModbusRTU.h>
 #include <ModbusTCP.h>
 #include <TelnetStream.h>
@@ -15,14 +19,17 @@
 static ModbusRTU rtu;
 static ModbusTCP tcp;
 static TelnetStreamClass& _log = TelnetStream; // TX only
+
 #if defined(ESP8266)
 static HardwareSerial& _rtuSerial = Serial;
 #else
 static HardwareSerial _rtuSerial(1);
 #endif
 
+#if defined(ESP32)
 static WiFiUDP udp;
 static MDNS mdns(udp);
+#endif
 
 static const int MODBUS_TCP_PORT = 502;
 static uint16_t rtuNodeId = 0;
@@ -130,17 +137,21 @@ void setup() {
 
   TelnetStream.begin();
 
+#if defined(ESP32)
   // Initialize the mDNS library. You can now reach or ping this
   // Arduino via the host name "arduino.local", provided that your operating
   // system is mDNS/Bonjour-enabled (such as MacOS X).
   // Always call this before any other method!
   mdns.begin(WiFi.localIP(), "esp32");
+#endif
 }
 
 void loop() {
+#if defined(ESP32)
   // This actually runs the mDNS module. YOU HAVE TO CALL THIS PERIODICALLY,
   // OR NOTHING WILL WORK! Preferably, call it once per loop().
   mdns.run();
+#endif
 
   // Clear RX buffer
   while (_log.available() > 0) {
