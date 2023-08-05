@@ -65,17 +65,36 @@ static bool onTcpDisconnected(IPAddress ip) {
   return true;
 }
 
+static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t len) {
+  // Readd CRC
+  len += 2;
+  if (len == 4 && data[0] == 0x90 && data[2] == 0x00 && data[3] == 0x00) {
+    // Fix Sofar error
+    data[0] = 0x83;
+    frameArg->validFrame = true;
+  }
+}
+
 // Callback that receives raw responses
-Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
-  auto src = (Modbus::frame_arg_t*) custom;
-  auto nodeId = src->slaveId;
+static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
+  auto frameArg = (Modbus::frame_arg_t*) custom;
+  auto nodeId = frameArg->slaveId;
   auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
 
-  _log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d\n", funCode, len, nodeId, src->to_server);
-  if (!src->to_server && rtuNodeId == nodeId) { // Check if transaction id is match
-    tcp.setTransactionId(tcpTransId); 
-    if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len)) {
-      _log.printf("TCP rawResponse failed\n");
+  _log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d, validFrame: %d\n", funCode, len, nodeId, frameArg->to_server, frameArg->validFrame);
+  if (!frameArg->to_server && rtuNodeId == nodeId) { // Check if transaction id is match
+
+    if (!frameArg->validFrame) {
+      tryFixFrame(frameArg, data, len);
+    }
+
+    if (frameArg->validFrame) {
+      tcp.setTransactionId(tcpTransId); 
+      if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len)) {
+        _log.printf("TCP rawResponse failed\n");
+      }
+    } else {
+      _log.printf("RTU: Invalid frame, no response\n");
     }
     rtuNodeId = 0;
     tcpTransId = 0;
@@ -99,7 +118,7 @@ void setup() {
   
   rtu.begin(&_rtuSerial, 32, TxEnableHigh);
   rtu.master();
-  rtu.onRaw(cbRtuRaw); 
+  rtu.onRaw(cbRtuRaw, true);
 
   TelnetStream.begin();
 
