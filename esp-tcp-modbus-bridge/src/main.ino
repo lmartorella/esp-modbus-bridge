@@ -131,7 +131,11 @@ void setup() {
   tcp.onConnect(onTcpConnected);
   tcp.onDisconnect(onTcpDisconnected);
   
+#if defined(ESP8266)
+  rtu.begin(&_rtuSerial, 0, TxEnableHigh);
+#else
   rtu.begin(&_rtuSerial, 32, TxEnableHigh);
+#endif
   rtu.master();
   rtu.onRaw(cbRtuRaw, true);
 
