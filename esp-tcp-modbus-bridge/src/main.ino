@@ -76,17 +76,28 @@ static bool onTcpDisconnected(IPAddress ip) {
   return true;
 }
 
-static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t len) {
+static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t& len) {
   // Readd CRC
-  len += 2;
-  if (len == 4 && data[0] == 0x90 && data[2] == 0x00 && data[3] == 0x00) {
+  if (len == 2 && data[0] == 0x90) {
     // Fix Sofar error
     data[0] = 0x83;
     frameArg->validFrame = true;
+    frameArg->slaveId = rtuNodeId;
+  } else if (len == 3 && data[0] == rtuNodeId && data[1] == 0x90) {
+    // Fix Sofar error + frame error
+    len--;
+    data[0] = 0x83;
+    data[1] = data[2];
+    frameArg->validFrame = true;
+    frameArg->slaveId = rtuNodeId;
   } else {
       _log.printf("RTU: Invalid frame: ");
-      for (uint8_t i = 0; i < len; i++) {
+      uint8_t i;
+      for (i = 0; i < len + 2 && i < 16; i++) {
         _log.printf("<%02x>", data[i]);
+      }
+      if (i >= 16) {
+        _log.printf("...");
       }
       _log.printf("\n");
   }
@@ -95,17 +106,16 @@ static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t le
 // Callback that receives raw responses
 static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
   auto frameArg = (Modbus::frame_arg_t*) custom;
-  auto nodeId = frameArg->slaveId;
   auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
 
-  _log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d, validFrame: %d\n", funCode, len, nodeId, frameArg->to_server, frameArg->validFrame);
-  if (!frameArg->to_server && rtuNodeId == nodeId) { // Check if transaction id is match
-
-    if (!frameArg->validFrame) {
+  _log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->to_server, frameArg->validFrame);
+  if (!frameArg->to_server) { 
+    // Check if transaction id is match
+    if (!frameArg->validFrame || rtuNodeId != frameArg->slaveId) {
       tryFixFrame(frameArg, data, len);
     }
 
-    if (frameArg->validFrame) {
+    if (frameArg->validFrame && rtuNodeId == frameArg->slaveId) {
       tcp.setTransactionId(tcpTransId); 
       if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len)) {
         _log.printf("TCP rawResponse failed\n");
