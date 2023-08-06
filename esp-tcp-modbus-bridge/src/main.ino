@@ -116,8 +116,9 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
     }
 
     if (frameArg->validFrame && rtuNodeId == frameArg->slaveId) {
-      tcp.setTransactionId(tcpTransId); 
-      if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len)) {
+      tcp.setTransactionId(tcpTransId);
+      // Put back the rtuNodeId otherwise it will respond with the master TCP node address
+      if (!tcp.rawResponse(IPAddress(tcpIpaddr), data, len, rtuNodeId)) {
         _log.printf("TCP rawResponse failed\n");
       }
     }
