@@ -35,26 +35,28 @@ static const int MODBUS_TCP_PORT = 502;
 static uint16_t rtuNodeId = 0;
 static uint16_t tcpTransId = 0;
 static uint32_t tcpIpaddr = 0;
+static Modbus::FunctionCode tcpFunCode;
 
 // Callback that receives raw TCP requests 
 static Modbus::ResultCode cbTcpRaw(uint8_t* data, uint8_t len, void* custom) {
   auto src = (Modbus::frame_arg_t*) custom;
   auto nodeId = src->slaveId;
-  auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
+  tcpFunCode = static_cast<Modbus::FunctionCode>(data[0]);
 
-  _log.printf("TCP nodeId: %d, Fn: %02X, len: %d\n: ", nodeId, funCode, len);
+  _log.printf("TCP nodeId: %d, Fn: %02X, len: %d\n: ", nodeId, tcpFunCode, len);
+  tcpTransId = src->transactionId;
+  tcpIpaddr = src->ipaddr;
+  rtuNodeId = nodeId;
 
   // Must save transaction ans node it for response processing
-  auto ret = rtu.rawRequest(nodeId, data, len);
-  if (!ret) {
+  if (!rtu.rawRequest(nodeId, data, len)) {
     // rawRequest returns 0 is unable to send data for some reason
-    _log.printf("err\n");
-    tcp.setTransactionId(src->transactionId); 
-    tcp.errorResponse(IPAddress(src->ipaddr), funCode, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
+    _log.printf("err, tcpTransId: %d\n", tcpTransId);
+    tcp.setTransactionId(tcpTransId); 
+    if (!tcp.errorResponse(IPAddress(tcpIpaddr), tcpFunCode, Modbus::EX_DEVICE_FAILED_TO_RESPOND, rtuNodeId)) {
+      _log.printf("TCP errorResponse failed\n");
+    }
   } else {
-    tcpTransId = src->transactionId;
-    tcpIpaddr = src->ipaddr;
-    rtuNodeId = nodeId;
     _log.printf("rtuNodeId: %d, tcpTransId: %d\n", rtuNodeId, tcpTransId);
   }
   
@@ -76,27 +78,35 @@ static bool onTcpDisconnected(IPAddress ip) {
   return true;
 }
 
-static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t* data, uint8_t& len) {
-  // Readd CRC
+/**
+ * Fix frame errors of the first byte due to bus arbitration/drive switch 
+ */
+static void tryFixFrame(Modbus::frame_arg_t* frameArg, uint8_t*& data, uint8_t& len) {
+  if (len == 3 && data[1] == 0x90) {
+    // Shift 1
+    len--;
+    data++;
+  }
   if (len == 2 && data[0] == 0x90) {
     // Fix Sofar error
     data[0] = 0x83;
     frameArg->validFrame = true;
     frameArg->slaveId = rtuNodeId;
-  } else if (len == 3 && data[0] == rtuNodeId && data[1] == 0x90) {
-    // Fix Sofar error + frame error
+    _log.printf("Recovered 0x90 error\n");
+  } else if (data[0] == rtuNodeId && data[1] == tcpFunCode) {
+    // 1-shift is common, the node Id entered in the frame shifting everything up
     len--;
-    data[0] = 0x83;
-    data[1] = data[2];
+    data++;
     frameArg->validFrame = true;
     frameArg->slaveId = rtuNodeId;
+    _log.printf("Recovered 1-byte shifted frame\n");
   } else {
       _log.printf("RTU: Invalid frame: ");
       uint8_t i;
-      for (i = 0; i < len + 2 && i < 16; i++) {
+      for (i = 0; i < len + 2 && i < 64; i++) {
         _log.printf("<%02x>", data[i]);
       }
-      if (i >= 16) {
+      if (i >= 64) {
         _log.printf("...");
       }
       _log.printf("\n");
@@ -113,6 +123,15 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
     // Check if transaction id is match
     if (!frameArg->validFrame || rtuNodeId != frameArg->slaveId) {
       tryFixFrame(frameArg, data, len);
+    } else {
+      // uint8_t i;
+      // for (i = 0; i < len + 2 && i < 64; i++) {
+      //   _log.printf("<%02x>", data[i]);
+      // }
+      // if (i >= 64) {
+      //   _log.printf("...");
+      // }
+      // _log.printf("\n");
     }
 
     if (frameArg->validFrame && rtuNodeId == frameArg->slaveId) {
@@ -153,6 +172,10 @@ void setup() {
 #endif
   rtu.master();
   rtu.onRaw(cbRtuRaw, true);
+  // Sofar doesn't follow the modbus spec, and it is splitting messages with more than 3.5 * space time sometimes
+  // ((1 / 9600) * 11) * 3.5 = 4ms
+  // Use 8ms instead
+  rtu.setInterFrameTime(8000);
 
   TelnetStream.begin();
 
