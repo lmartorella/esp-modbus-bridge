@@ -184,7 +184,7 @@ void setup() {
   // Arduino via the host name "arduino.local", provided that your operating
   // system is mDNS/Bonjour-enabled (such as MacOS X).
   // Always call this before any other method!
-  mdns.begin(WiFi.localIP(), "esp32");
+  mdns.begin(WiFi.localIP(), WIFI_HOSTNAME);
 #endif
 }
 
