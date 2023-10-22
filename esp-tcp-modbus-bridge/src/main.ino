@@ -35,6 +35,7 @@ static MDNS mdns(udp);
 static const int MODBUS_TCP_PORT = 502;
 #define MODBUS_PDU_MAX_SIZE (253)
 #define RTU_TIMEOUT_MS (500)
+#define QUEUE_WDT_TIMEOUT (5000)
 
 struct PendingRequest {
   uint8_t rtuNodeId;
@@ -224,6 +225,10 @@ void setup() {
 #endif
 }
 
+// Try to fix deadlock in modbus, that stops to be able to dequeue requests
+// Timestamp of the first object entered in queue, reset when the queue empties
+static unsigned long beginQueueActivityTs = 0;
+
 void loop() {
 #if defined(ESP32)
   // This actually runs the mDNS module. YOU HAVE TO CALL THIS PERIODICALLY,
@@ -238,6 +243,18 @@ void loop() {
 
   rtu.task();
   tcp.task();
+
+  if (!requests.isEmpty()) {
+    if (beginQueueActivityTs == 0) {
+      beginQueueActivityTs = millis();
+    } else if (millis() - beginQueueActivityTs > QUEUE_WDT_TIMEOUT) {
+      // Reset MCU
+      _log.printf("Queue Watchdog: reset\n");
+      esp_restart();
+    }
+  } else if (requests.isEmpty()) {
+    beginQueueActivityTs = 0;
+  }
 
   if (!requests.isEmpty() && !requests.inProgress()) {
     dequeueReq();
