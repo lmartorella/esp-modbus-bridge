@@ -49,10 +49,10 @@ struct PendingRequest {
 static FifoQueue<PendingRequest> requests(4);
 
 static void sendErr(const PendingRequest& req, Modbus::ResultCode err) {
-    _log.printf("err, tcpTransId: %d\n", req.tcpTransId);
+    _log.printf("err, tcpTransId: %d, err: %d\n", req.tcpTransId, err);
     tcp.setTransactionId(req.tcpTransId); 
     if (!tcp.errorResponse(IPAddress(req.tcpIpaddr), static_cast<Modbus::FunctionCode>(req.data[0]), err, req.rtuNodeId)) {
-      _log.printf("TCP errorResponse failed\n");
+      _log.printf("TCP errResp failed\n");
     }
 }
 
@@ -149,7 +149,11 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
   auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
 
   _log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->to_server, frameArg->validFrame);
-  if (!frameArg->to_server) {
+  if (!requests.inProgress()) {
+    _log.printf("RTU: ignored, not in progress, rtuNodeId: %d\n", frameArg->slaveId);
+  } else if (frameArg->to_server) {
+    _log.printf("RTU: ignored, not a response, rtuNodeId: %d\n", frameArg->slaveId);
+  } else {
     const auto& req = requests.stopTopInProgress();
 
     // Check if transaction id is match
@@ -163,9 +167,10 @@ static Modbus::ResultCode cbRtuRaw(uint8_t* data, uint8_t len, void* custom) {
       if (!tcp.rawResponse(IPAddress(req.tcpIpaddr), data, len, req.rtuNodeId)) {
         _log.printf("TCP rawResponse failed\n");
       }
+    } else {
+      // Closes the request
+      sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
     }
-  } else {
-    _log.printf("RTU: ignored, not in progress, rtuNodeId: %d\n", frameArg->slaveId);
   }
   return Modbus::EX_SUCCESS; // Stop other processing
 }
