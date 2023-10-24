@@ -1,7 +1,8 @@
 #include <TelnetStream.h>
-#include "bridge.h"
+#include "EspModbusBridge.h"
 
 #define MODBUS_TCP_PORT (502)
+
 #define RTU_TIMEOUT_MS (500)
 #define QUEUE_WDT_TIMEOUT (5000)
 

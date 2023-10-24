@@ -12,8 +12,8 @@
 
 #include <TelnetStream.h>
 #include <HardwareSerial.h>
+#include <EspModbusBridge.h>
 #include "wifi_ssid.h"
-#include "bridge.h"
 
 static TelnetStreamClass& _log =  TelnetStream; // TX only
 
