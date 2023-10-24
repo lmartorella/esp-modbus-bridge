@@ -25,18 +25,26 @@ static WiFiUDP udp;
 static MDNS mdns(udp);
 #endif
 
-static TelnetModbusBridge bridge(_rtuSerial);
+static TelnetModbusBridge bridge;
 
 void setup() {
-#if defined(ESP8266)
-    _rtuSerial.begin(9600, SERIAL_8N1);
-#else
-    _rtuSerial.begin(9600, SERIAL_8N1, 35, 33); // 35 is input only
-
+#if defined(ESP32)
     // Keep Serial1 healthy for debugging
     Serial.begin(115200, SERIAL_8N1);
     Serial.end();
     Serial.begin(115200, SERIAL_8N1);
+#endif
+
+#if defined(ESP8266)
+    _rtuSerial.begin(9600, SERIAL_8N1);
+#else
+    _rtuSerial.begin(9600, SERIAL_8N1, 35, 33); // 35 is input only
+#endif
+
+#if defined(ESP8266)
+    bridge.begin(_rtuSerial, 0, TxEnableHigh);
+#else
+    bridge.begin(_rtuSerial, 32, TxEnableHigh);
 #endif
 
     WiFi.setHostname(WIFI_HOSTNAME);

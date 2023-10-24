@@ -51,12 +51,14 @@ protected:
     Stream& log;
 
 public:
-    ModbusBridge(Stream& logStream, Stream& rtuStream);
+    ModbusBridge(Stream& logStream);
+    void begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode);
     void task();
 };
 
 class TelnetModbusBridge : public ModbusBridge {
 public:
-    TelnetModbusBridge(Stream& rtuStream);
+    TelnetModbusBridge();
+    void begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode);
     void task();
 };

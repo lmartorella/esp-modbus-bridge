@@ -5,10 +5,13 @@
 
 #define RTU_TIMEOUT_MS (500)
 #define QUEUE_WDT_TIMEOUT (5000)
+// This defines the size of the request queue
+#define MAX_CONCURRENT_REQUESTS (4)
 
-ModbusBridge::ModbusBridge(Stream& logStream, Stream& rtuStream) 
-// Max 4 concurrent connections
-:log(logStream), requests(4) {
+ModbusBridge::ModbusBridge(Stream& logStream) 
+:log(logStream), requests(MAX_CONCURRENT_REQUESTS) { }
+
+void ModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode) {
     tcp.server(MODBUS_TCP_PORT);
     tcp.onRaw([this](uint8_t* data, uint8_t len, void* src) -> Modbus::ResultCode { 
       return onTcpRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
@@ -20,11 +23,8 @@ ModbusBridge::ModbusBridge(Stream& logStream, Stream& rtuStream)
       return onTcpDisconnected(ip);
     });
 
-#if defined(ESP8266)
-    rtu.begin(&rtuStream, 0, TxEnableHigh);
-#else
-    rtu.begin(&rtuStream, 32, TxEnableHigh);
-#endif
+    rtu.begin(&rtuStream, txEnablePin, txEnableMode);
+
     rtu.master();
     rtu.onRaw([this](uint8_t* data, uint8_t len, void* src) -> Modbus::ResultCode {
       return onRtuRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
@@ -191,10 +191,15 @@ void ModbusBridge::timeoutRtu() {
   sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
 }
 
-TelnetModbusBridge::TelnetModbusBridge(Stream& rtuStream)
-:ModbusBridge(TelnetStream, rtuStream) {
-    TelnetStream.begin();
+TelnetModbusBridge::TelnetModbusBridge()
+:ModbusBridge(TelnetStream) {
 }
+
+void TelnetModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode) {
+    TelnetStream.begin();
+    ModbusBridge::begin(rtuStream, txEnablePin, txEnableMode);
+}
+
 
 void TelnetModbusBridge::task() {
   ModbusBridge::task();
