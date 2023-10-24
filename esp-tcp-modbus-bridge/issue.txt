@@ -1,6 +1,0 @@
-Split read, timeout exceed _t (and even _t * 5)
-
-RTU: Fn: 03, len: 12, nodeId: 1, to_server: 0, validFrame: 0
-RTU: Invalid frame: <03><16><13><85><00><23><00><00><00><03><00><23><00><00>
-RTU: Fn: 00, len: 9, nodeId: 0, to_server: 0, validFrame: 0
-RTU: Invalid frame: <00><00><00><00><00><08><d6><00><9d><dc><f6>
