@@ -190,3 +190,16 @@ void ModbusBridge::timeoutRtu() {
   log.printf("RTU: timeout, tcpTransId: %d\n", req.tcpTransId);
   sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
 }
+
+TelnetModbusBridge::TelnetModbusBridge(Stream& rtuStream)
+:ModbusBridge(TelnetStream, rtuStream) {
+    TelnetStream.begin();
+}
+
+void TelnetModbusBridge::task() {
+  ModbusBridge::task();
+  // Clear RX buffer
+  while (log.available() > 0) {
+      log.read();
+  }
+}

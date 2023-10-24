@@ -10,12 +10,9 @@
 #include <ArduinoMDNS.h>
 #endif
 
-#include <TelnetStream.h>
 #include <HardwareSerial.h>
 #include <EspModbusBridge.h>
 #include "wifi_ssid.h"
-
-static TelnetStreamClass& _log =  TelnetStream; // TX only
 
 #if defined(ESP8266)
 static HardwareSerial& _rtuSerial = Serial;
@@ -28,7 +25,7 @@ static WiFiUDP udp;
 static MDNS mdns(udp);
 #endif
 
-static ModbusBridge bridge(_log, _rtuSerial);
+static TelnetModbusBridge bridge(_rtuSerial);
 
 void setup() {
 #if defined(ESP8266)
@@ -45,8 +42,6 @@ void setup() {
     WiFi.setHostname(WIFI_HOSTNAME);
     WiFi.begin(WIFI_SSID, WIFI_PASSPHRASE);
 
-    TelnetStream.begin();
-
 #if defined(ESP32)
     // Initialize the mDNS library. You can now reach or ping this
     // Arduino via the host name "arduino.local", provided that your operating
@@ -62,11 +57,6 @@ void loop() {
     // OR NOTHING WILL WORK! Preferably, call it once per loop().
     mdns.run();
 #endif
-
-    // Clear RX buffer
-    while (_log.available() > 0) {
-        _log.read();
-    }
 
     bridge.task();
     yield();

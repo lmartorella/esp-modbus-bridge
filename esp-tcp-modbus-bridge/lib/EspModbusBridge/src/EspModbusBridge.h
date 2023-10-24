@@ -2,6 +2,7 @@
 
 #include <ModbusRTU.h>
 #include <ModbusTCP.h>
+#include <TelnetStream.h>
 #include "queue.h"
 
 #define MODBUS_PDU_MAX_SIZE (253)
@@ -13,7 +14,6 @@
 class ModbusBridge {
     ModbusRTU rtu;
     ModbusTCP tcp;
-    Stream& log;
     // Try to fix deadlock in modbus, that stops to be able to dequeue requests
     // Timestamp of the first object entered in queue, reset when the queue empties
     unsigned long beginQueueActivityTs = 0;
@@ -47,7 +47,16 @@ class ModbusBridge {
 
     void timeoutRtu();
 
+protected:
+    Stream& log;
+
 public:
     ModbusBridge(Stream& logStream, Stream& rtuStream);
+    void task();
+};
+
+class TelnetModbusBridge : public ModbusBridge {
+public:
+    TelnetModbusBridge(Stream& rtuStream);
     void task();
 };
