@@ -119,41 +119,6 @@ bool ModbusBridge::onTcpDisconnected(IPAddress ip) {
   return true;
 }
 
-/**
- * Fix frame errors of the first byte due to bus arbitration/drive switch 
- */
-void ModbusBridge::tryFixFrame(const PendingRequest req, Modbus::frame_arg_t* frameArg, uint8_t*& data, uint8_t& len) {
-  if (len == 3 && data[1] == 0x90) {
-    // Shift 1
-    len--;
-    data++;
-  }
-  if (len == 2 && data[0] == 0x90) {
-    // Fix Sofar error
-    data[0] = 0x83;
-    frameArg->validFrame = true;
-    frameArg->slaveId = req.rtuNodeId;
-    log.printf("Recovered 0x90 error\n");
-  } else if (data[0] == req.rtuNodeId && data[1] == req.data[0]) {
-    // 1-shift is common, the node Id entered in the frame shifting everything up
-    len--;
-    data++;
-    frameArg->validFrame = true;
-    frameArg->slaveId = req.rtuNodeId;
-    log.printf("Recovered 1-byte shifted frame\n");
-  } else {
-      log.printf("RTU: Invalid frame: ");
-      uint8_t i;
-      for (i = 0; i < len + 2 && i < 64; i++) {
-        log.printf("<%02x>", data[i]);
-      }
-      if (i >= 64) {
-        log.printf("...");
-      }
-      log.printf("\n");
-  }
-}
-
 // Callback that receives raw responses from RTU
 Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::frame_arg_t* frameArg) {
   auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
@@ -168,7 +133,7 @@ Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::fr
 
     // Check if transaction id is match
     if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
-      tryFixFrame(req, frameArg, data, len);
+      tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
     }
 
     if (frameArg->validFrame && req.rtuNodeId == frameArg->slaveId) {

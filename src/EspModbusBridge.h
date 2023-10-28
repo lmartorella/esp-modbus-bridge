@@ -40,15 +40,14 @@ class ModbusBridge {
     bool onTcpConnected(IPAddress ip);
     bool onTcpDisconnected(IPAddress ip);
 
-    /**
-    * Fix frame errors of the first byte due to bus arbitration/drive switch 
-    */
-    void tryFixFrame(const PendingRequest req, Modbus::frame_arg_t* frameArg, uint8_t*& data, uint8_t& len);
-
     void timeoutRtu();
 
 protected:
     Stream& log;
+    /**
+     * Fix frame errors of the first byte due to bus arbitration/drive switch 
+     */
+    virtual void tryFixFrame(uint8_t rtuNodeId, uint8_t requestFunction, Modbus::frame_arg_t* frameArg, uint8_t*& data, uint8_t& len) { }
 
 public:
     ModbusBridge(Stream& logStream);
