@@ -14,20 +14,20 @@ ModbusBridge::ModbusBridge(Stream& logStream)
 void ModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode) {
     tcp.server(MODBUS_TCP_PORT);
     tcp.onRaw([this](uint8_t* data, uint8_t len, void* src) -> Modbus::ResultCode { 
-      return onTcpRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
+        return onTcpRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
     });
     tcp.onConnect([this](IPAddress ip) -> bool { 
-      return onTcpConnected(ip);
+        return onTcpConnected(ip);
     });
     tcp.onDisconnect([this](IPAddress ip) -> bool {
-      return onTcpDisconnected(ip);
+        return onTcpDisconnected(ip);
     });
 
     rtu.begin(&rtuStream, txEnablePin, txEnableMode);
 
     rtu.master();
     rtu.onRaw([this](uint8_t* data, uint8_t len, void* src) -> Modbus::ResultCode {
-      return onRtuRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
+        return onRtuRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
     }, true);
 
     // Sofar doesn't follow the modbus spec, and it is splitting messages with more than 3.5 * space time sometimes
@@ -42,14 +42,14 @@ void ModbusBridge::task() {
 
     if (!requests.isEmpty()) {
         if (beginQueueActivityTs == 0) {
-        beginQueueActivityTs = millis();
+            beginQueueActivityTs = millis();
         } else if (millis() - beginQueueActivityTs > QUEUE_WDT_TIMEOUT) {
-        // Reset MCU
-        log.printf("Queue Watchdog: reset\n");
+            // Reset MCU
+            log.printf("ERR: queue watchdog: reset\n");
 #ifdef ESP32
-        esp_restart();
+            esp_restart();
 #else
-        ESP.restart();
+            ESP.restart();
 #endif
         }
     } else if (requests.isEmpty()) {
@@ -65,115 +65,111 @@ void ModbusBridge::task() {
 }
 
 void ModbusBridge::sendErr(const ModbusBridge::PendingRequest& req, Modbus::ResultCode err) {
-    log.printf("err, tcpTransId: %d, err: %d\n", req.tcpTransId, err);
+    log.printf("RESP-ERR: code: %d, tcpTransId: %d\n", err, req.tcpTransId);
     tcp.setTransactionId(req.tcpTransId); 
     if (!tcp.errorResponse(IPAddress(req.tcpIpaddr), static_cast<Modbus::FunctionCode>(req.data[0]), err, req.rtuNodeId)) {
-      log.printf("TCP errResp failed\n");
+        log.printf("TCP: errResp failed\n");
     }
 }
 
 // Callback that receives raw TCP requests 
 Modbus::ResultCode ModbusBridge::onTcpRaw(uint8_t* data, uint8_t len, Modbus::frame_arg_t* frameArg) {
-  PendingRequest req;
-  req.rtuNodeId = frameArg->slaveId;
-  req.tcpTransId = frameArg->transactionId;
-  req.tcpIpaddr = frameArg->ipaddr;
-  memcpy(req.data, data, len);
-  req.dataLen = len;
+    PendingRequest req;
+    req.rtuNodeId = frameArg->slaveId;
+    req.tcpTransId = frameArg->transactionId;
+    req.tcpIpaddr = frameArg->ipaddr;
+    memcpy(req.data, data, len);
+    req.dataLen = len;
 
-  if (requests.isFull()) {
-    sendErr(req, Modbus::EX_PATH_UNAVAILABLE);
-    log.printf("TCP nodeId: %d, Fn: %02X, QUEUE_FULL ERR\n: ", req.rtuNodeId, static_cast<Modbus::FunctionCode>(data[0]));
-  } else {
-    requests.push(req);
-    log.printf("TCP nodeId: %d, Fn: %02X, len: %d\n: ", req.rtuNodeId, static_cast<Modbus::FunctionCode>(data[0]), len);
-  }
+    if (requests.isFull()) {
+        sendErr(req, Modbus::EX_PATH_UNAVAILABLE);
+    } else {
+        requests.push(req);
+        log.printf("REQ: nodeId: %d, fun: %02X, len: %d\n", req.rtuNodeId, static_cast<Modbus::FunctionCode>(data[0]), len);
+    }
 
-
-  // Stop other processing
-  return Modbus::EX_SUCCESS; 
+    // Stop other processing
+    return Modbus::EX_SUCCESS; 
 }
 
 void ModbusBridge::dequeueReq() {
-  const PendingRequest& req = requests.peek();
+    const PendingRequest& req = requests.peek();
 
-  // Must save transaction ans node it for response processing
-  if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen)) {
-    // rawRequest returns 0 is unable to send data for some reason
-    // do nothing and wait
-    log.printf("RTU err: tcpTransId: %d\n", req.tcpTransId);
-  } else {
-    requests.setTopInProgress();
-    // Sent. Now wait for response
-    log.printf("rtuNodeId: %d, tcpTransId: %d\n", req.rtuNodeId, req.tcpTransId);
-  }
+    // Must save transaction ans node it for response processing
+    if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen)) {
+        // rawRequest returns 0 is unable to send data for some reason
+        // do nothing and wait
+        log.printf("RTU: rawRequest failed: tcpTransId: %d\n", req.tcpTransId);
+    } else {
+        requests.setTopInProgress();
+        // Sent. Now wait for response
+        log.printf("REQ: on-the-wire rtuNodeId: %d, tcpTransId: %d\n", req.rtuNodeId, req.tcpTransId);
+    }
 }
 
 bool ModbusBridge::onTcpConnected(IPAddress ip) {
-  log.print("TCP connected from: ");
-  log.print(ip);
-  log.print("\n");
-  return true;
+    log.print("TCP connected from: ");
+    log.print(ip);
+    log.print("\n");
+    return true;
 }
 
 bool ModbusBridge::onTcpDisconnected(IPAddress ip) {
-  log.print("TCP disconnected from: ");
-  log.print(ip);
-  log.print("\n");
-  return true;
+    log.print("TCP disconnected from: ");
+    log.print(ip);
+    log.print("\n");
+    return true;
 }
 
 // Callback that receives raw responses from RTU
 Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::frame_arg_t* frameArg) {
-  auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
+    auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
 
-  log.printf("RTU: Fn: %02X, len: %d, nodeId: %d, to_server: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->to_server, frameArg->validFrame);
-  if (!requests.inProgress()) {
-    log.printf("RTU: ignored, not in progress, rtuNodeId: %d\n", frameArg->slaveId);
-  } else if (frameArg->to_server) {
-    log.printf("RTU: ignored, not a response, rtuNodeId: %d\n", frameArg->slaveId);
-  } else {
-    const auto& req = requests.stopTopInProgress();
-
-    // Check if transaction id is match
-    if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
-      tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
-    }
-
-    if (frameArg->validFrame && req.rtuNodeId == frameArg->slaveId) {
-      tcp.setTransactionId(req.tcpTransId);
-      // Put back the rtuNodeId otherwise it will respond with the master TCP node address
-      if (!tcp.rawResponse(IPAddress(req.tcpIpaddr), data, len, req.rtuNodeId)) {
-        log.printf("TCP rawResponse failed\n");
-      }
+    if (!requests.inProgress()) {
+        log.printf("RTU: ignored, not in progress, rtuNodeId: %d\n", frameArg->slaveId);
+    } else if (frameArg->to_server) {
+        log.printf("RTU: ignored, not a response, rtuNodeId: %d\n", frameArg->slaveId);
     } else {
-      // Closes the request
-      sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
+        log.printf("RESP: fn: %02X, len: %d, nodeId: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->validFrame);
+        const auto& req = requests.stopTopInProgress();
+
+        // Check if transaction id is match
+        if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
+        tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
+        }
+
+        if (frameArg->validFrame && req.rtuNodeId == frameArg->slaveId) {
+        tcp.setTransactionId(req.tcpTransId);
+        // Put back the rtuNodeId otherwise it will respond with the master TCP node address
+        if (!tcp.rawResponse(IPAddress(req.tcpIpaddr), data, len, req.rtuNodeId)) {
+            log.printf("TCP: rawResponse failed\n");
+        }
+        } else {
+        // Closes the request
+        sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
+        }
     }
-  }
-  return Modbus::EX_SUCCESS; // Stop other processing
+    return Modbus::EX_SUCCESS; // Stop other processing
 }
 
 void ModbusBridge::timeoutRtu() {
-  const auto& req = requests.stopTopInProgress();
-  log.printf("RTU: timeout, tcpTransId: %d\n", req.tcpTransId);
-  sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
+    const auto& req = requests.stopTopInProgress();
+    log.printf("REQ: timeout, tcpTransId: %d\n", req.tcpTransId);
+    sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
 }
 
 TelnetModbusBridge::TelnetModbusBridge()
-:ModbusBridge(TelnetStream) {
-}
+    :ModbusBridge(TelnetStream) { }
 
 void TelnetModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode) {
     TelnetStream.begin();
     ModbusBridge::begin(rtuStream, txEnablePin, txEnableMode);
 }
 
-
 void TelnetModbusBridge::task() {
-  ModbusBridge::task();
-  // Clear RX buffer
-  while (log.available() > 0) {
-      log.read();
-  }
+    ModbusBridge::task();
+    // Clear RX buffer
+    while (log.available() > 0) {
+        log.read();
+    }
 }
