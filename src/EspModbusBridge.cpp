@@ -26,7 +26,9 @@ void ModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnab
         return onTcpConnected(ip);
     });
     tcp.onDisconnect([this](IPAddress ip) -> bool {
-        return onTcpDisconnected(ip);
+        // modbus lib always sends IPADDR_NONE to disconnect
+        // TODO: fix this
+        return onTcpDisconnected();
     });
 
     rtu.begin(&rtuStream, txEnablePin, txEnableMode);
@@ -125,10 +127,8 @@ bool ModbusBridge::onTcpConnected(IPAddress ip) {
     return true;
 }
 
-bool ModbusBridge::onTcpDisconnected(IPAddress ip) {
-    log.print("TCP disconnected from: ");
-    log.print(ip);
-    log.print("\n");
+bool ModbusBridge::onTcpDisconnected() {
+    log.print("TCP disconnected\n");
     return true;
 }
 

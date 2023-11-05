@@ -38,7 +38,7 @@ class ModbusBridge {
     Modbus::ResultCode onRtuRaw(uint8_t* data, uint8_t len, Modbus::frame_arg_t* frameArg);
 
     bool onTcpConnected(IPAddress ip);
-    bool onTcpDisconnected(IPAddress ip);
+    bool onTcpDisconnected();
 
     void timeoutRtu();
 
