@@ -53,6 +53,12 @@ public:
     ModbusBridge(Stream& logStream);
     void begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode);
     void task();
+
+    /**
+    * This function sets the inter frame time in microseconds. This time is the time that task() waits before considering that the
+    * frame being transmitted on the RS485 bus has finished. By default is 3.5 * character transmission time.
+    */
+    void setInterFrameTime(int us);
 };
 
 class TelnetModbusBridge : public ModbusBridge {

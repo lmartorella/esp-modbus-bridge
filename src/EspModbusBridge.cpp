@@ -1,12 +1,15 @@
 #include <TelnetStream.h>
 #include "EspModbusBridge.h"
 
-#define MODBUS_TCP_PORT (502)
+const int MODBUS_TCP_PORT = 502;
 
-#define RTU_TIMEOUT_MS (500)
-#define QUEUE_WDT_TIMEOUT (5000)
+// Hard-coded timeout if the RTU node doesn't respond. This triggers a EX_DEVICE_FAILED_TO_RESPOND modbus error
+const int RTU_TIMEOUT_MS = 500;
+
+// If the queue is not getting emptied in this time, reset the MCU
+const int QUEUE_WDT_TIMEOUT = 5000;
 // This defines the size of the request queue
-#define MAX_CONCURRENT_REQUESTS (4)
+const int MAX_CONCURRENT_REQUESTS = 4;
 
 ModbusBridge::ModbusBridge(Stream& logStream) 
 :requests(MAX_CONCURRENT_REQUESTS), log(logStream) { }
@@ -29,11 +32,10 @@ void ModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnab
     rtu.onRaw([this](uint8_t* data, uint8_t len, void* src) -> Modbus::ResultCode {
         return onRtuRaw(data, len, static_cast<Modbus::frame_arg_t*>(src));
     }, true);
+}
 
-    // Sofar doesn't follow the modbus spec, and it is splitting messages with more than 3.5 * space time sometimes
-    // ((1 / 9600) * 11) * 3.5 = 4ms
-    // Use 8ms instead
-    rtu.setInterFrameTime(8000);
+void ModbusBridge::setInterFrameTime(int us) {
+    rtu.setInterFrameTime(us);
 }
 
 void ModbusBridge::task() {
@@ -85,7 +87,7 @@ Modbus::ResultCode ModbusBridge::onTcpRaw(uint8_t* data, uint8_t len, Modbus::fr
         sendErr(req, Modbus::EX_PATH_UNAVAILABLE);
     } else {
         requests.push(req);
-        log.printf("REQ: nodeId: %d, fun: %02X, len: %d\n", req.rtuNodeId, static_cast<Modbus::FunctionCode>(data[0]), len);
+        log.printf("REQ: nodeId: %d, fun: %02X, len: %d, tcpTransId: %d\n", req.rtuNodeId, static_cast<Modbus::FunctionCode>(data[0]), len, req.tcpTransId);
     }
 
     // Stop other processing
