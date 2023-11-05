@@ -11,6 +11,9 @@ const int QUEUE_WDT_TIMEOUT = 5000;
 // This defines the size of the request queue
 const int MAX_CONCURRENT_REQUESTS = 4;
 
+// If the RTU request cannot be made due to modbus library error, only retry after this timeout
+const int RETRY_TIMEOUT = 50;
+
 ModbusBridge::ModbusBridge(Stream& logStream) 
 :requests(MAX_CONCURRENT_REQUESTS), log(logStream) { }
 
@@ -58,10 +61,15 @@ void ModbusBridge::task() {
         beginQueueActivityTs = 0;
     }
 
-    if (!requests.isEmpty() && !requests.inProgress()) {
+    auto ts = requests.getHeadTimestamp();
+    if (requests.inErrorRetry() && millis() - ts < RETRY_TIMEOUT) {
+        // Wait
+    }
+    else if (!requests.isEmpty() && !requests.inProgress()) {
+        // Process head
         dequeueReq();
     }
-    if (requests.inProgress() && millis() - requests.getTopTimestamp() > RTU_TIMEOUT_MS) {
+    else if (requests.inProgress() && millis() - ts > RTU_TIMEOUT_MS) {
         timeoutRtu();
     }
 }
@@ -99,11 +107,12 @@ void ModbusBridge::dequeueReq() {
 
     // Must save transaction ans node it for response processing
     if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen)) {
+        requests.setHeadInErrorRetry();
         // rawRequest returns 0 is unable to send data for some reason
-        // do nothing and wait
+        // do nothing and wait RETRY_TIMEOUT
         log.printf("RTU: rawRequest failed: tcpTransId: %d\n", req.tcpTransId);
     } else {
-        requests.setTopInProgress();
+        requests.setHeadInProgress();
         // Sent. Now wait for response
         log.printf("REQ: on-the-wire rtuNodeId: %d, tcpTransId: %d\n", req.rtuNodeId, req.tcpTransId);
     }
@@ -133,7 +142,7 @@ Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::fr
         log.printf("RTU: ignored, not a response, rtuNodeId: %d\n", frameArg->slaveId);
     } else {
         log.printf("RESP: fn: %02X, len: %d, nodeId: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->validFrame);
-        const auto& req = requests.stopTopInProgress();
+        const auto& req = requests.dequeue();
 
         // Check if transaction id is match
         if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
@@ -155,7 +164,7 @@ Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::fr
 }
 
 void ModbusBridge::timeoutRtu() {
-    const auto& req = requests.stopTopInProgress();
+    const auto& req = requests.dequeue();
     log.printf("REQ: timeout, tcpTransId: %d\n", req.tcpTransId);
     sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
 }

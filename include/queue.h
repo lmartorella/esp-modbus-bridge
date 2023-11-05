@@ -9,22 +9,34 @@ template<typename T>
 class FifoQueue {
 private:
     cppQueue queue;
-    unsigned long topInProgressTs = 0;
+    unsigned long lastTimestamp = 0;
+    enum {
+        Idle,
+        InProgress,
+        InErrorRetry
+    } headState = Idle;
 public:
-    FifoQueue(int maxSize) :queue(sizeof(T), maxSize, FIFO) { }
+    FifoQueue(int maxSize) 
+        :queue(sizeof(T), maxSize, FIFO) { }
 
-    void setTopInProgress() {
-        topInProgressTs = millis();
+    void setHeadInProgress() {
+        lastTimestamp = millis();
+        headState = InProgress;
+    }
+
+    void setHeadInErrorRetry() {
+        lastTimestamp = millis();
+        headState = InErrorRetry;
     }
 
     void push(const T& val) {
         queue.push(&val);
     }
 
-    T stopTopInProgress() {
+    T dequeue() {
         T ret;
         queue.pop(&ret);
-        topInProgressTs = 0;
+        headState = Idle;
         return ret;
     }
 
@@ -43,10 +55,14 @@ public:
     }
 
     bool inProgress() const {
-        return topInProgressTs != 0;
+        return headState == InProgress;
     }
 
-    unsigned long getTopTimestamp() const {
-        return topInProgressTs;
+    bool inErrorRetry() const {
+        return headState == InErrorRetry;
+    }
+
+    unsigned long getHeadTimestamp() const {
+        return lastTimestamp;
     }
 };
