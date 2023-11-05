@@ -12,8 +12,7 @@ private:
     unsigned long lastTimestamp = 0;
     enum {
         Idle,
-        InProgress,
-        InErrorRetry
+        InProgress
     } headState = Idle;
 public:
     FifoQueue(int maxSize) 
@@ -22,11 +21,6 @@ public:
     void setHeadInProgress() {
         lastTimestamp = millis();
         headState = InProgress;
-    }
-
-    void setHeadInErrorRetry() {
-        lastTimestamp = millis();
-        headState = InErrorRetry;
     }
 
     void push(const T& val) {
@@ -56,10 +50,6 @@ public:
 
     bool inProgress() const {
         return headState == InProgress;
-    }
-
-    bool inErrorRetry() const {
-        return headState == InErrorRetry;
     }
 
     unsigned long getHeadTimestamp() const {

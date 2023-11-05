@@ -1,6 +1,6 @@
 {
   "name": "EspModbusBridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standalone TCP-RS485 bridge with ESP8266/ESP32",
   "repository":
   {
@@ -15,10 +15,13 @@
     }
   ],
   "dependencies": {
-    "modbus-esp8266": "git@github.com:lmartorella/modbus-esp8266.git#feat/raw-gateway",
+    "modbus-esp8266": "git@github.com:lmartorella/modbus-esp8266.git#4.1.0-sna1",
     "TelnetStream": "",
     "Queue": ""
   },
+  "flags": [
+    "-DMODBUSRTU_TIMEOUT=500"
+  ],
   "frameworks": "arduino",
   "platforms": ["espressif8266", "espressif32"]
 }

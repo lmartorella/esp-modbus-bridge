@@ -4,15 +4,13 @@
 const int MODBUS_TCP_PORT = 502;
 
 // Hard-coded timeout if the RTU node doesn't respond. This triggers a EX_DEVICE_FAILED_TO_RESPOND modbus error
-const int RTU_TIMEOUT_MS = 500;
+// It must be greater than MODBUSRTU_TIMEOUT, since the modbus library will cleanup the state after this time.
+const int RTU_TIMEOUT_MS = (MODBUSRTU_TIMEOUT + 50);
 
 // If the queue is not getting emptied in this time, reset the MCU
 const int QUEUE_WDT_TIMEOUT = 5000;
 // This defines the size of the request queue
 const int MAX_CONCURRENT_REQUESTS = 4;
-
-// If the RTU request cannot be made due to modbus library error, only retry after this timeout
-const int RETRY_TIMEOUT = 50;
 
 ModbusBridge::ModbusBridge(Stream& logStream) 
 :requests(MAX_CONCURRENT_REQUESTS), log(logStream) { }
@@ -64,10 +62,7 @@ void ModbusBridge::task() {
     }
 
     auto ts = requests.getHeadTimestamp();
-    if (requests.inErrorRetry() && millis() - ts < RETRY_TIMEOUT) {
-        // Wait
-    }
-    else if (!requests.isEmpty() && !requests.inProgress()) {
+    if (!requests.isEmpty() && !requests.inProgress()) {
         // Process head
         dequeueReq();
     }
@@ -109,9 +104,7 @@ void ModbusBridge::dequeueReq() {
 
     // Must save transaction ans node it for response processing
     if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen)) {
-        requests.setHeadInErrorRetry();
         // rawRequest returns 0 is unable to send data for some reason
-        // do nothing and wait RETRY_TIMEOUT
         log.printf("RTU: rawRequest failed: tcpTransId: %d\n", req.tcpTransId);
     } else {
         requests.setHeadInProgress();
@@ -146,18 +139,18 @@ Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::fr
 
         // Check if transaction id is match
         if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
-        tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
+            tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
         }
 
         if (frameArg->validFrame && req.rtuNodeId == frameArg->slaveId) {
-        tcp.setTransactionId(req.tcpTransId);
-        // Put back the rtuNodeId otherwise it will respond with the master TCP node address
-        if (!tcp.rawResponse(IPAddress(req.tcpIpaddr), data, len, req.rtuNodeId)) {
-            log.printf("TCP: rawResponse failed\n");
-        }
+            tcp.setTransactionId(req.tcpTransId);
+            // Put back the rtuNodeId otherwise it will respond with the master TCP node address
+            if (!tcp.rawResponse(IPAddress(req.tcpIpaddr), data, len, req.rtuNodeId)) {
+                log.printf("TCP: rawResponse failed\n");
+            }
         } else {
-        // Closes the request
-        sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
+            // Closes the request
+            sendErr(req, Modbus::EX_DEVICE_FAILED_TO_RESPOND);
         }
     }
     return Modbus::EX_SUCCESS; // Stop other processing
