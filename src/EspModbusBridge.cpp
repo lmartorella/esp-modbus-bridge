@@ -9,7 +9,7 @@
 #define MAX_CONCURRENT_REQUESTS (4)
 
 ModbusBridge::ModbusBridge(Stream& logStream) 
-:log(logStream), requests(MAX_CONCURRENT_REQUESTS) { }
+:requests(MAX_CONCURRENT_REQUESTS), log(logStream) { }
 
 void ModbusBridge::begin(Stream& rtuStream, int16_t txEnablePin, ModbusRTUTxEnableMode txEnableMode) {
     tcp.server(MODBUS_TCP_PORT);
@@ -46,7 +46,11 @@ void ModbusBridge::task() {
         } else if (millis() - beginQueueActivityTs > QUEUE_WDT_TIMEOUT) {
         // Reset MCU
         log.printf("Queue Watchdog: reset\n");
+#ifdef ESP32
         esp_restart();
+#else
+        ESP.restart();
+#endif
         }
     } else if (requests.isEmpty()) {
         beginQueueActivityTs = 0;
