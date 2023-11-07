@@ -1,6 +1,6 @@
 {
   "name": "EspModbusBridge",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Standalone TCP-RS485 bridge with ESP8266/ESP32",
   "repository":
   {

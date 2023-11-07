@@ -3,14 +3,12 @@
 
 const int MODBUS_TCP_PORT = 502;
 
-// Hard-coded timeout if the RTU node doesn't respond. This triggers a EX_DEVICE_FAILED_TO_RESPOND modbus error
-// It must be greater than MODBUSRTU_TIMEOUT, since the modbus library will cleanup the state after this time.
-const int RTU_TIMEOUT_MS = (MODBUSRTU_TIMEOUT + 50);
-
 // If the queue is not getting emptied in this time, reset the MCU
 const int QUEUE_WDT_TIMEOUT = 5000;
 // This defines the size of the request queue
 const int MAX_CONCURRENT_REQUESTS = 4;
+
+const int TELNET_FLUSH_TIME = 500;
 
 ModbusBridge::ModbusBridge(Stream& logStream) 
 :requests(MAX_CONCURRENT_REQUESTS), log(logStream) { }
@@ -42,32 +40,40 @@ void ModbusBridge::setInterFrameTime(int us) {
 }
 
 void ModbusBridge::task() {
-    rtu.task();
-    tcp.task();
+    auto now = millis();
 
-    if (!requests.isEmpty()) {
-        if (beginQueueActivityTs == 0) {
-            beginQueueActivityTs = millis();
-        } else if (millis() - beginQueueActivityTs > QUEUE_WDT_TIMEOUT) {
+    // Wait for the telnet stream to have time to flush the IP data
+    if (restartingTs) {
+        if (now - restartingTs > TELNET_FLUSH_TIME) {
             // Reset MCU
-            log.printf("ERR: queue watchdog: reset\n");
 #ifdef ESP32
             esp_restart();
 #else
             ESP.restart();
 #endif
         }
-    } else if (requests.isEmpty()) {
-        beginQueueActivityTs = 0;
-    }
+    } else {
+        rtu.task();
+        tcp.task();
 
-    auto ts = requests.getHeadTimestamp();
-    if (!requests.isEmpty() && !requests.inProgress()) {
-        // Process head
-        dequeueReq();
-    }
-    else if (requests.inProgress() && millis() - ts > RTU_TIMEOUT_MS) {
-        timeoutRtu();
+        if (!requests.isEmpty()) {
+            if (beginQueueActivityTs == 0) {
+                beginQueueActivityTs = millis();
+            } else if (now - beginQueueActivityTs > QUEUE_WDT_TIMEOUT) {
+                // Preparing for reset
+                log.printf("ERR: queue watchdog: reset\n");
+                log.flush();
+                restartingTs = now;
+            }
+        } else if (requests.isEmpty()) {
+            beginQueueActivityTs = 0;
+        }
+
+        auto ts = requests.getHeadTimestamp();
+        if (!requests.isEmpty() && !requests.inProgress()) {
+            // Process head
+            dequeueReq();
+        }
     }
 }
 
@@ -103,7 +109,12 @@ void ModbusBridge::dequeueReq() {
     const PendingRequest& req = requests.peek();
 
     // Must save transaction ans node it for response processing
-    if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen)) {
+    if (!rtu.rawRequest(req.rtuNodeId, req.data, req.dataLen, [this](Modbus::ResultCode code, uint16_t, void*) -> bool {
+        if (code == Modbus::EX_TIMEOUT) {
+            timeoutRtu();
+        }
+        return true;
+    })) {
         // rawRequest returns 0 is unable to send data for some reason
         log.printf("RTU: rawRequest failed: tcpTransId: %d\n", req.tcpTransId);
     } else {
@@ -127,20 +138,19 @@ bool ModbusBridge::onTcpDisconnected() {
 
 // Callback that receives raw responses from RTU
 Modbus::ResultCode ModbusBridge::onRtuRaw(uint8_t* data, uint8_t len, Modbus::frame_arg_t* frameArg) {
-    auto funCode = static_cast<Modbus::FunctionCode>(data[0]);
-
     if (!requests.inProgress()) {
         log.printf("RTU: ignored, not in progress, rtuNodeId: %d\n", frameArg->slaveId);
     } else if (frameArg->to_server) {
         log.printf("RTU: ignored, not a response, rtuNodeId: %d\n", frameArg->slaveId);
     } else {
-        log.printf("RESP: fn: %02X, len: %d, nodeId: %d, validFrame: %d\n", funCode, len, frameArg->slaveId, frameArg->validFrame);
         const auto& req = requests.dequeue();
 
         // Check if transaction id is match
         if (!frameArg->validFrame || req.rtuNodeId != frameArg->slaveId) {
             tryFixFrame(req.rtuNodeId, req.data[0], frameArg, data, len);
         }
+
+        log.printf("RESP: fn: %02X, len: %d, nodeId: %d, validFrame: %d\n", data[0], len, frameArg->slaveId, frameArg->validFrame);
 
         if (frameArg->validFrame && req.rtuNodeId == frameArg->slaveId) {
             tcp.setTransactionId(req.tcpTransId);

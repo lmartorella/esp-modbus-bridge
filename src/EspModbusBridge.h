@@ -18,6 +18,9 @@ class ModbusBridge {
     // Timestamp of the first object entered in queue, reset when the queue empties
     unsigned long beginQueueActivityTs = 0;
 
+    // Used to give a chance for the final TCP logs to leave the MCU
+    unsigned long restartingTs = 0;
+
     struct PendingRequest {
         uint8_t rtuNodeId;
         uint16_t tcpTransId;
