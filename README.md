@@ -12,6 +12,13 @@ A universal fully-fledged [Modbus](https://en.wikipedia.org/wiki/Modbus) RS485-t
 - Custom handlers for error recovery and support for non-standard RTU responses
 - Watchdog support of the Modbus library
 
+The library was fully tested on ESP32 and ESP8266, but it should be compatible on all Arduino platforms. 
+
+The Modbus library used is the [modbus-esp8266](https://github.com/emelianov/modbus-esp8266).
+
+![](doc/test-board.jpg)
+<p align="center"><em>Test board with both MCUs and a bare MAX3485 on a socket</em></p>
+
 ## Implementation details
 
 The bridge leverages the hardware support of the Arduino-supported MCUs, and specifically:
@@ -20,8 +27,6 @@ The bridge leverages the hardware support of the Arduino-supported MCUs, and spe
 - GPIO for the MAX485/MAX3485 driver output enable line
 - WiFi stack
 - Timer with millisecond precision
-
-The Modbus library used is the [modbus-esp8266](https://github.com/emelianov/modbus-esp8266).
 
 In addition, continuous real-time logging is exposed via a TCP port that can be opened by a client, by default set to the telnet port 23 (to easily leverage the `telnet` app itself).
 
