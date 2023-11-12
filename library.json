@@ -15,7 +15,7 @@
     }
   ],
   "dependencies": {
-    "modbus-esp8266": "git@github.com:lmartorella/modbus-esp8266.git#4.1.0-sna2",
+    "modbus-esp8266": "symlink://C:/Users/lucia/Documents/modbus-esp8266",
     "TelnetStream": "1.2.5",
     "Queue": "1.11"
   },
